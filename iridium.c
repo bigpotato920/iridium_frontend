@@ -29,7 +29,7 @@
 #define FALSE 0
 #define TRUE 1
 #define SBDOUTPUTMAX 1960
-#define SLICE_LEN 50
+#define SLICE_LEN 30
 #define SBDWTMIN 1
 #define NO_MT_MSG 0
 #define HAS_MT_MSG 1
@@ -65,7 +65,9 @@ typedef struct
     char msg[];
 } slice;
 
-#define SLICE_HEADER_LEN sizeof(slice)
+//static const int PAYLOAD_LEN = SLICE_LEN - sizeof(slice);
+
+#define PAYLOAD_LEN (SLICE_LEN - sizeof(slice))
 /**
 Function Prototypes for 9602
 more to be listed as part of cleanup.
@@ -93,8 +95,8 @@ int check_mt_message();
 int get_mt_message (int fd);
 int clear_mo_mt_buffer(int fd);
 
-int read_from_file(const char *filename, long* ip_addr, char* msg);
-void send_after_split(int fd, long ip_addr, const char *msg_recv);
+int read_from_file(const char *filename, long* ip_addr, int* port, char* msg);
+void send_after_split(int fd, long ip_addr, int port, const char *msg_recv);
 int send_to_iridium(int fd, char *msg, int length);
 int recv_from_iridium(int fd);
 
@@ -181,6 +183,7 @@ int init9602(const char *path, struct iridium9602 *my9602, int max_modems)
     fclose(file);
 
     ptr->serial_descriptor = init_serial_port(ptr->modem_path, ptr->baudrate);
+    assert(ptr->serial_descriptor > 0);
 
     return 0;
 }
@@ -338,7 +341,6 @@ int init_serial_port(char *modem_path, int baud)
         perror("set_com_config");
         return -1;
     }  
-
 
     return fd; 
 }
@@ -583,14 +585,13 @@ int clear_mo_mt_buffer(int fd)
 /**
  * Read messages from the file
  */
-int read_from_file(const char *filename, long* ip_addr, char* msg_recv)
+int read_from_file(const char *filename, long* ip_addr, int* port, char* msg_recv)
 {
  
     int msg_len = 0;
     int nread = 0;
     FILE* fp = NULL;
     int finish = 0;
-
 
     /*if (strcmp(filename, prev_file) != 0) {// fresh file
         printf("fresh file\n");
@@ -620,7 +621,7 @@ int read_from_file(const char *filename, long* ip_addr, char* msg_recv)
 
     if (prev_fp == NULL) {// fresh file
         printf("fresh file\n");
-        if ((fp = fopen(filename, "rb")) == NULL) {
+        if ((fp = fopen(filename, "r")) == NULL) {
 
             printf("filename = %s\n", filename);
             perror("fopen");
@@ -634,13 +635,14 @@ int read_from_file(const char *filename, long* ip_addr, char* msg_recv)
 
     }
 
-    if ((fscanf(fp, "%ld%d", ip_addr, &msg_len)) == 2) {
+    if ((fscanf(fp, "%ld%d%d", ip_addr, port, &msg_len)) == 3) {
+
         memset(msg_recv, 0, SBDOUTPUTMAX);
         nread = fread(msg_recv, sizeof(char), msg_len, fp);
         msg_recv[nread] = '\0';
         
         #ifdef DEBUG
-        printf("ip = %ld , msg_len = %d, msg = %s\n", *ip_addr, msg_len, msg_recv);
+        printf("ip = %ld , port = %dmsg_len = %d, msg = %s\n", *ip_addr, *port, msg_len, msg_recv);
         #endif 
 
     } else {
@@ -658,12 +660,10 @@ int read_from_file(const char *filename, long* ip_addr, char* msg_recv)
  * @param fd       [serial descriptor]
  * @param msg_recv [msg read from the file]
  */
-void send_after_split(int fd, long ip_addr, const char *msg_recv) {
+void send_after_split(int fd, long ip_addr, int port, const char *msg_recv) {
 
     int index = 0;
     int count = 0;
-    unsigned int payload_len = 0;
-    payload_len = SLICE_LEN - SLICE_HEADER_LEN;
 
     slice* m_slice = NULL;
     m_slice = malloc(SLICE_LEN);
@@ -672,11 +672,12 @@ void send_after_split(int fd, long ip_addr, const char *msg_recv) {
         return;
     }
     
-    
-    if (strlen(msg_recv) % payload_len == 0) 
-        count = strlen(msg_recv) / (payload_len);
+    char temp_msg[SBDOUTPUTMAX];
+    memset(temp_msg, 0, SBDOUTPUTMAX);
+    if (strlen(msg_recv) % PAYLOAD_LEN == 0) 
+        count = strlen(msg_recv) / (PAYLOAD_LEN);
     else
-        count = strlen(msg_recv) / (payload_len) + 1;
+        count = strlen(msg_recv) / (PAYLOAD_LEN) + 1;
 
     #ifdef DEBUG
     printf("count = %d\n", count);
@@ -686,14 +687,18 @@ void send_after_split(int fd, long ip_addr, const char *msg_recv) {
 
         m_slice->sn = SEQUENTIAL_NUM;
         m_slice->ip = ip_addr;
+        m_slice->port = port;
         m_slice->index = index;
         m_slice->count = count;
 
-        memcpy(m_slice->msg, msg_recv + index*payload_len, payload_len);
+        memcpy(m_slice->msg, msg_recv + index*PAYLOAD_LEN, PAYLOAD_LEN);
+        printf("index = %d,PAYLOAD_LEN = %d, index*PAYLOAD_LEN = %d\n", 
+            index, PAYLOAD_LEN, index*PAYLOAD_LEN);
+        memcpy(temp_msg, msg_recv + index*PAYLOAD_LEN, PAYLOAD_LEN);
 
         #ifdef DEBUG
-        printf("sn = %d ip = %ld, msg slice %d, count = %d, msg = %s\n", 
-            m_slice->sn, m_slice->ip, m_slice->index,  m_slice->count, m_slice->msg);
+        printf("sn = %d ip = %ld, port = %d, msg slice %d, count = %d, msg = %s\n", 
+            m_slice->sn, m_slice->ip, m_slice->port, m_slice->index,  m_slice->count, temp_msg);
         #endif 
 
         send_to_iridium(fd, (char*)m_slice, SLICE_LEN);
@@ -894,6 +899,7 @@ void start_iridium_service(int serial_port_fd, int pipe_read_fd)
     int nread = 0;
     int finish = 0;
     long ip_addr;
+    int port;
     int rv;
     int flags;
     fd_set readfds;
@@ -953,10 +959,10 @@ void start_iridium_service(int serial_port_fd, int pipe_read_fd)
                         #endif 
 
                         while (!finish) {
-                            finish = read_from_file(filename, &ip_addr, msg_recv);
+                            finish = read_from_file(filename, &ip_addr, &port, msg_recv);
                             if (finish != 0)
                                 break;
-                            send_after_split(serial_port_fd, ip_addr, msg_recv);
+                            send_after_split(serial_port_fd, ip_addr, port, msg_recv);
                         }
                         finish = 0;
 
