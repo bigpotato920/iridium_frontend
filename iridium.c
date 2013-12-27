@@ -17,6 +17,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <assert.h>
+#include <signal.h>
 
 #include "queue.h"
 #include "network.h"
@@ -69,9 +70,9 @@ typedef struct
 
 #define PAYLOAD_LEN (SLICE_LEN - sizeof(slice))
 /**
-Function Prototypes for 9602
-more to be listed as part of cleanup.
-**/
+  Function Prototypes for 9602
+  more to be listed as part of cleanup.
+ **/
 int init9602(const char *path, struct iridium9602 *my9602, int maxModems);
 int init_serial_port(char *modem_path, int baud);  /* Initiates the serial port for the 9602 */
 int init_sbdix_return();
@@ -95,8 +96,8 @@ int check_mt_message();
 int get_mt_message (int fd);
 int clear_mo_mt_buffer(int fd);
 
-int read_from_file(const char *filename, long* ip_addr, int* port, char* msg);
-void send_after_split(int fd, long ip_addr, int port, const char *msg_recv);
+int read_from_file(const char *filename, unsigned long* ip_addr, int* port, char* msg);
+void send_after_split(int fd, unsigned long ip_addr, int port, const char *msg_recv);
 int send_to_iridium(int fd, char *msg, int length);
 int recv_from_iridium(int fd);
 
@@ -106,21 +107,18 @@ int cache_in_queue(char* filename);
 
 void* thread_func(void* arg);
 
-
 char file_server_path[BUFSIZ];
 char main_control_path[BUFSIZ];
 char udp_server_ip[BUFSIZ];
 int udp_server_port;
 char output[SBDOUTPUTMAX] =    {0};
-char prev_file[FILENAME_MAX];
-FILE* prev_fp = NULL;
 int verboseon = 1;
 queue* m_queue = NULL;
 
 /**
-start of functions for 9602 program
+  start of functions for 9602 program
 
-**/
+ **/
 
 /**
  * [Helper function for debug]
@@ -214,16 +212,16 @@ int parse_sbdrt(char *output)
     char *token;
     int nsend = -1;
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("parse_sbdrt:%s\n", output);
-    #endif 
+#endif 
 
     token = strtok(output, ":");
     token = strtok(NULL, "\n");
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("Token: %s\n", token);
-    #endif 
+#endif 
 
     nsend = send_to_udp_server(udp_server_ip, udp_server_port, token);
 
@@ -252,11 +250,11 @@ void parse_sbdix(char *output, struct sbdix_return *my_sbdi)
     token = strtok(NULL, "\n");
     my_sbdi->MTQUEUED = atoi(token);
     //basic error handling
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("SBDIX Return: +SBDIX: %i, %i, %i, %i, %i, %i\n",
-         my_sbdi->MOSTATUS, my_sbdi->MOMSN, my_sbdi->MTSTATUS, 
-         my_sbdi->MTMSN, my_sbdi->MTLENGTH, my_sbdi->MTQUEUED);
-    #endif
+            my_sbdi->MOSTATUS, my_sbdi->MOMSN, my_sbdi->MTSTATUS, 
+            my_sbdi->MTMSN, my_sbdi->MTLENGTH, my_sbdi->MTQUEUED);
+#endif
 }
 
 
@@ -310,7 +308,7 @@ int parse_csq(char *output)
  */
 int parse_sbdreg(char *output)
 {
-    
+
     int rv = 0;
     if ((strstr(output, "+SBDREG:")) != NULL)
     {
@@ -319,7 +317,7 @@ int parse_sbdreg(char *output)
         token = strtok(NULL, "\n");
         rv = atoi(token);
     }
-    
+
     return rv;
 }
 
@@ -333,7 +331,7 @@ int parse_sbdreg(char *output)
  */
 int init_serial_port(char *modem_path, int baud)
 {
-   
+
     int fd = open_port(modem_path);
 
     if(set_com_config(fd, baud, 8, 'N', 1) < 0)
@@ -402,10 +400,10 @@ void confirm_sig_level(int fd)
  */
 int send_at_command(int fd, const char *message, const char *return_code)
 {
-    
-    #ifdef DEBUG
+
+#ifdef DEBUG
     printf("send at command ,message = %s\n", message);
-    #endif
+#endif
 
     memset(output, 0, SBDOUTPUTMAX);
     int res;
@@ -446,16 +444,16 @@ int query_reg_status(int fd)
 
     if (rv == 2)
     {
-        #ifdef DEBUG
+#ifdef DEBUG
         printf("already registered\n");
-        #endif 
+#endif 
 
         return 0;
     } else {
 
-        #ifdef DEBUG
+#ifdef DEBUG
         printf("doesnt register\n");
-        #endif 
+#endif 
 
         return 1;
     }
@@ -503,7 +501,7 @@ int check_mt_message()
     }
     else
         return 2;
-  
+
 }
 
 /**
@@ -516,9 +514,9 @@ int get_mt_message (int fd)
     int index;
     int rv;
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("One message Downloaded.\n Messages waiting: %i \n", my_sbdi.MTQUEUED);
-    #endif
+#endif
 
     //reading of MT messages at gateway
     rv = send_at_command(fd, "AT+SBDRT\r", "OK");
@@ -536,10 +534,10 @@ int get_mt_message (int fd)
 
     for (index = 1; index <= my_sbdi.MTQUEUED; index++)
     {
-        #ifdef DEBUG
+#ifdef DEBUG
         printf("Retrieving messages from gateway.\n");
-        #endif
- 
+#endif
+
         while (1)
         {
             send_at_command(fd, "AT+SBDIXA\r", "OK");
@@ -548,15 +546,15 @@ int get_mt_message (int fd)
             sleep(RETRY_INTERVAL);
         }
 
-        #ifdef DEBUG
+#ifdef DEBUG
         printf("AT+SBIX return_code: %s\n", output);
-        #endif
+#endif
 
         /**
-        There is a MAX number of messages that may be
-        QUEUED. Retrieve messages if available and send to
-         destination/port in config file.
-        **/
+          There is a MAX number of messages that may be
+          QUEUED. Retrieve messages if available and send to
+          destination/port in config file.
+         **/
         rv = send_at_command(fd, "AT+SBDRT\r", "OK");
         parse_sbdrt(output);
     }
@@ -574,84 +572,53 @@ int clear_mo_mt_buffer(int fd)
     int rv;
     rv = send_at_command(fd, "AT+SBDD2\r", "OK");
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("AT+SBDD2 return_code: %s\n", output);
-    #endif
+#endif
 
     return rv;
 }
 
 
 /**
- * Read messages from the file
+ * @brief [read specific varibles from file]
+ * @details read the dst ip, dst port and data from the file
+ * 
+ * @param filename name of the file to be read
+ * @param ip_addr dst ip address    
+ * @param port dst port num
+ * @param msg_recv data to send
+ * @return 0 on success or -1 on failure
  */
-int read_from_file(const char *filename, long* ip_addr, int* port, char* msg_recv)
+int read_from_file(const char *filename, unsigned long *ip_addr, int *port, 
+        char *msg_recv)
 {
- 
+
     int msg_len = 0;
     int nread = 0;
     FILE* fp = NULL;
-    int finish = 0;
+    int rv;
 
-    /*if (strcmp(filename, prev_file) != 0) {// fresh file
-        printf("fresh file\n");
-        if ((fp = fopen(filename, "rb")) == NULL) {
-            fprintf(stderr, "can not open file:%s\n", filename);
-            return -1;
-        }
-        if (prev_fp)
-            fclose(prev_fp);
-        memset(prev_file, 0, FILENAME_MAX);
-        strcpy(prev_file, filename);
-    } else {
-        fp = prev_fp;
+    if ((fp = fopen(filename, "rb")) == NULL) {
+        perror("fopen");
+        return -1;
     }
 
-    if ((fscanf(fp, "%ld%d", ip_addr, &msg_len)) == 2) {
-        memset(msg_recv, 0, SBDOUTPUTMAX);
-        nread = fread(msg_recv, sizeof(char), msg_len, fp);
-        msg_recv[nread] = '\0';
-    
-        printf("ip = %ld , msg_len = %d, msg = %s\n", *ip_addr, msg_len, msg_recv);
-    } else {
-        finish = 1;
-    }
-    prev_fp = fp;*/
-
-
-    if (prev_fp == NULL) {// fresh file
-        printf("fresh file\n");
-        if ((fp = fopen(filename, "r")) == NULL) {
-
-            printf("filename = %s\n", filename);
-            perror("fopen");
-
-            return -1;
-        }
-
-        prev_fp = fp;
-    } else {
-        fp = prev_fp;
-
-    }
-
-    if ((fscanf(fp, "%ld%d%d", ip_addr, port, &msg_len)) == 3) {
+    if ((rv = fscanf(fp, "%lu%d%d", ip_addr, port, &msg_len)) == 3) {
 
         memset(msg_recv, 0, SBDOUTPUTMAX);
         nread = fread(msg_recv, sizeof(char), msg_len, fp);
         msg_recv[nread] = '\0';
-        
-        #ifdef DEBUG
-        printf("ip = %ld , port = %dmsg_len = %d, msg = %s\n", *ip_addr, *port, msg_len, msg_recv);
-        #endif 
+
+#ifdef DEBUG
+        printf("ip = %lu , port = %d msg_len = %d, msg = %s\n", *ip_addr, *port, msg_len, msg_recv);
+#endif 
 
     } else {
-        finish = 1;
-        fclose(prev_fp);
-        prev_fp = NULL;
-        fp = NULL;
+
+        return -1;
     }
-    return finish;
+    return 0;
 }
 
 /**
@@ -660,7 +627,7 @@ int read_from_file(const char *filename, long* ip_addr, int* port, char* msg_rec
  * @param fd       [serial descriptor]
  * @param msg_recv [msg read from the file]
  */
-void send_after_split(int fd, long ip_addr, int port, const char *msg_recv) {
+void send_after_split(int fd, unsigned long ip_addr, int port, const char *msg_recv) {
 
     int index = 0;
     int count = 0;
@@ -671,7 +638,7 @@ void send_after_split(int fd, long ip_addr, int port, const char *msg_recv) {
         perror("failed to create m_msg"); 
         return;
     }
-    
+
     char temp_msg[SBDOUTPUTMAX];
     memset(temp_msg, 0, SBDOUTPUTMAX);
     if (strlen(msg_recv) % PAYLOAD_LEN == 0) 
@@ -679,9 +646,9 @@ void send_after_split(int fd, long ip_addr, int port, const char *msg_recv) {
     else
         count = strlen(msg_recv) / (PAYLOAD_LEN) + 1;
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("count = %d\n", count);
-    #endif 
+#endif 
 
     for (index = 0; index < count; index++) {
 
@@ -693,13 +660,13 @@ void send_after_split(int fd, long ip_addr, int port, const char *msg_recv) {
 
         memcpy(m_slice->msg, msg_recv + index*PAYLOAD_LEN, PAYLOAD_LEN);
         printf("index = %d,PAYLOAD_LEN = %d, index*PAYLOAD_LEN = %d\n", 
-            index, PAYLOAD_LEN, index*PAYLOAD_LEN);
+                index, PAYLOAD_LEN, index*PAYLOAD_LEN);
         memcpy(temp_msg, msg_recv + index*PAYLOAD_LEN, PAYLOAD_LEN);
 
-        #ifdef DEBUG
-        printf("sn = %d ip = %ld, port = %d, msg slice %d, count = %d, msg = %s\n", 
-            m_slice->sn, m_slice->ip, m_slice->port, m_slice->index,  m_slice->count, temp_msg);
-        #endif 
+#ifdef DEBUG
+        printf("sn = %d ip = %lu, port = %d, msg slice %d, count = %d, msg = %s\n", 
+                m_slice->sn, m_slice->ip, m_slice->port, m_slice->index,  m_slice->count, temp_msg);
+#endif 
 
         send_to_iridium(fd, (char*)m_slice, SLICE_LEN);
     }
@@ -707,7 +674,17 @@ void send_after_split(int fd, long ip_addr, int port, const char *msg_recv) {
 
 }
 
-
+/**
+ * @brief [brief description]
+ * @details [long description]
+ * 
+ * @param fd [description]
+ * @param msg [description]
+ * @param length [description]
+ * @param return_code [description]
+ * @param X [description]
+ * @return [description]
+ */
 int send_mo_message(int fd, char* msg, int length, char *return_code)
 {
 
@@ -726,9 +703,9 @@ int send_mo_message(int fd, char* msg, int length, char *return_code)
     fb = checksum >> 8;
     sb = checksum & 0xFF;
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("checksum = %2x, fb = %x, sb = %x\n", checksum, fb, sb);
-    #endif 
+#endif 
 
     write(fd, &fb, 1);
     write(fd, &sb, 1);
@@ -746,7 +723,7 @@ int send_mo_message(int fd, char* msg, int length, char *return_code)
 
         else if ((strstr(output, "ERROR") != NULL))
         {
-  
+
             printf("ERROR with command\n");
             return -1;
         }
@@ -766,36 +743,36 @@ int send_to_iridium(int fd, char *msg, int length)
     char sbdwb[BUFSIZ];
     sprintf(sbdwb, "%s=%d\r", "AT+SBDWB", length);
     rv = send_at_command(fd, sbdwb, "READY");
-    
-    #ifdef DEBUG
+
+#ifdef DEBUG
     printf("AT+SBDWT return_code: %s\n", output);
-    #endif
+#endif
 
     //do stuff with return code...i.e. retry
 
     rv = send_mo_message(fd, msg, length, "OK");
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("MESSAGE LOADING return_code: %s\n", output);
-    #endif
+#endif
 
     //Ensure that the AT+SBDIXA command was sent successfully
     while (1)
     {
-        
+
         rv = send_at_command(fd, "AT+SBDIX\r", "OK");
         parse_sbdix(output, &my_sbdi);
 
-        #ifdef DEBUG
+#ifdef DEBUG
         printf("AT+SBDI return_code: %s\n", output);
-        #endif    
-    
+#endif    
+
         if (check_mo_status(&my_sbdi) == 0)
             break;
         sleep(RETRY_INTERVAL);
     }
-    
- 
+
+
 
     rv = check_mt_message();
     if (rv == HAS_MT_MSG)
@@ -824,10 +801,10 @@ int recv_from_iridium(int fd)
 
     rv = send_at_command(fd, "AT+SBDIXA\r", "OK");
     parse_sbdix(output, &my_sbdi);
-    
-    #ifdef DEBUG
+
+#ifdef DEBUG
     printf("AT+SBDI return_code: %s\n", output);
-    #endif
+#endif
 
     if (check_mt_message() == HAS_MT_MSG)
     {
@@ -847,7 +824,6 @@ int init_file_server()
 
     file_service_fd = create_unix_server(file_server_path);
 
-    memset(prev_file, 0, FILENAME_MAX);
     return file_service_fd;
 }
 
@@ -867,9 +843,9 @@ int init_iridium_service(int* serial_port_fd)
     if (rv == -1)
         return -1;
 
-    #ifdef DEBUG
+#ifdef DEBUG
     print_structs(my9602, 1);
-    #endif
+#endif
 
     rv = init_queue();
 
@@ -877,7 +853,7 @@ int init_iridium_service(int* serial_port_fd)
         perror("init file server");
         return -1;
     }
-      
+
 
     init_sbdix_return();
 
@@ -898,7 +874,7 @@ void start_iridium_service(int serial_port_fd, int pipe_read_fd)
     int max_fd;
     int nread = 0;
     int finish = 0;
-    long ip_addr;
+    unsigned long ip_addr;
     int port;
     int rv;
     int flags;
@@ -914,7 +890,7 @@ void start_iridium_service(int serial_port_fd, int pipe_read_fd)
     FD_SET(serial_port_fd, &readfds);
     FD_SET(pipe_read_fd, &readfds);
 
-    
+
     flags = fcntl(pipe_read_fd, F_GETFL, 0);
     fcntl(pipe_read_fd, F_SETFL, flags | O_NONBLOCK);
 
@@ -928,53 +904,48 @@ void start_iridium_service(int serial_port_fd, int pipe_read_fd)
         rv = select(max_fd + 1, &testfds, (fd_set *)NULL, (fd_set *)NULL, (struct timeval *)NULL);
         switch (rv)
         {
-     
-        case -1:
-            perror("select");
-            break;
-        default:
 
-            if (FD_ISSET(serial_port_fd, &testfds)) {
-                nread = read(serial_port_fd, iridium_buf, SBDOUTPUTMAX);
-                if (nread > 0) {
-                    iridium_buf[nread] = '\0';
+            case -1:
+                perror("select");
+                break;
+            default:
 
-                    #ifdef DEBUG
-                    printf("iridium buf = %s\n", iridium_buf);
-                    #endif 
+                if (FD_ISSET(serial_port_fd, &testfds)) {
+                    nread = read(serial_port_fd, iridium_buf, SBDOUTPUTMAX);
+                    if (nread > 0) {
+                        iridium_buf[nread] = '\0';
 
-                    if (strstr(iridium_buf, "SBDRING") != NULL) {
-                        recv_from_iridium(serial_port_fd);
-                    }
-                }
-            }
+#ifdef DEBUG
+                        printf("iridium buf = %s\n", iridium_buf);
+#endif 
 
-            else if (FD_ISSET(pipe_read_fd, &testfds)) {
-                while ((nread = read(pipe_read_fd, pipe_buf, 1)) > 0) {
-      
-                    if (de_queue(m_queue, filename)) {
-
-                        #ifdef DEBUG
-                        printf("filename = %s, finish = %d\n", filename, finish);
-                        #endif 
-
-                        while (!finish) {
-                            finish = read_from_file(filename, &ip_addr, &port, msg_recv);
-                            if (finish != 0)
-                                break;
-                            send_after_split(serial_port_fd, ip_addr, port, msg_recv);
+                        if (strstr(iridium_buf, "SBDRING") != NULL) {
+                            recv_from_iridium(serial_port_fd);
                         }
-                        finish = 0;
-
-                    } else {
-   
-                        printf("can not dequeue\n");
-                        break;
                     }
                 }
 
-            }
-            break;
+                else if (FD_ISSET(pipe_read_fd, &testfds)) {
+                    while ((nread = read(pipe_read_fd, pipe_buf, 1)) > 0) {
+
+                        if (de_queue(m_queue, filename)) {
+
+                            finish = read_from_file(filename, &ip_addr, &port, msg_recv);
+                            if (finish < 0) {
+                                printf("failed to read from file\n");
+                                continue;
+                            }
+                            send_after_split(serial_port_fd, ip_addr, port, msg_recv);
+
+                        } else {
+
+                            printf("can not dequeue\n");
+                            break;
+                        }
+                    }
+
+                }
+                break;
         }
     }
 }
@@ -993,9 +964,9 @@ void* file_queue_func(void *pipe_fd)
         return (void*)-1;
     }
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("iridium file server fd = %d\n", server_fd);
-    #endif
+#endif
 
     while (1) {
         if ((client_fd = server_accept(server_fd)) < 0) {
@@ -1012,12 +983,12 @@ void* file_queue_func(void *pipe_fd)
         }
 
         if (nread == 0) {
-            #ifdef DEBUG
+#ifdef DEBUG
             printf("a file client disconnected\n");
-            #endif 
+#endif 
 
             close(client_fd);
-            
+
         } else if (nread == -1) {
             perror("read error");
             close(client_fd);
@@ -1041,9 +1012,9 @@ void *heartbeat_func(void *arg)
 
     client_fd = create_unix_client();
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("iridium unix client fd = %d\n", client_fd);
-    #endif 
+#endif 
 
     if (client_fd < 0) {
         perror("failed to create client");
@@ -1073,6 +1044,8 @@ void *heartbeat_func(void *arg)
 
 }
 
+
+
 int main(int argc, char *argv[])
 {
 
@@ -1096,36 +1069,33 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("pipe_fds = %d,%d\n", pipe_fd[0], pipe_fd[1]);
-    #endif
+#endif
 
     /*rv = pthread_create(&heartbeat_thread, NULL, heartbeat_func, NULL);
-    if (rv != 0) {
-        perror("failed to create heartbeat thread");
-        return 1;
-    }*/
-    
+      if (rv != 0) {
+      perror("failed to create heartbeat thread");
+      return 1;
+      }*/
+
     rv = pthread_create(&worker_thread, NULL, file_queue_func, &pipe_fd[1]);
     if (rv != 0) {
         perror("failed to create worker thread");
         exit(EXIT_FAILURE);
     }
-    
+
 
     start_iridium_service(serial_port_fd, pipe_fd[0]);
-    
+
 
     pthread_cancel(worker_thread);
     //pthread_cancel(heartbeat_thread);
-    
+
     pthread_join(worker_thread, NULL);
     //pthread_join(heartbeat_thread, NULL);
 
-    close(serial_port_fd);
-    close(pipe_fd[0]);
-    close(pipe_fd[1]);
-    queue_release(m_queue);
+
 
     exit(EXIT_SUCCESS);
 
