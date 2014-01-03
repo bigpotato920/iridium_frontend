@@ -598,7 +598,7 @@ int read_from_file(const char *filename, unsigned long *ip_addr, int *port,
     int nread = 0;
     FILE* fp = NULL;
     int rv;
-
+printf("read from file\n");
     if ((fp = fopen(filename, "rb")) == NULL) {
         perror("fopen");
         return -1;
@@ -613,6 +613,8 @@ int read_from_file(const char *filename, unsigned long *ip_addr, int *port,
 #ifdef DEBUG
         printf("ip = %lu , port = %d msg_len = %d, msg = %s\n", *ip_addr, *port, msg_len, msg_recv);
 #endif 
+        fclose(fp);
+        unlink(filename);
 
     } else {
 
@@ -935,6 +937,7 @@ void start_iridium_service(int serial_port_fd, int pipe_read_fd)
                                 printf("failed to read from file\n");
                                 continue;
                             }
+
                             send_after_split(serial_port_fd, ip_addr, port, msg_recv);
 
                         } else {
@@ -978,6 +981,7 @@ void* file_queue_func(void *pipe_fd)
 
         while ((nread = read(client_fd, filename, FILENAME_MAX))) {
             filename[nread] = '\0';
+            printf("cache in queue filename = %s\n", filename);
             cache_in_queue(filename);
             write(*(int*)pipe_fd, "0", 1);
         }
