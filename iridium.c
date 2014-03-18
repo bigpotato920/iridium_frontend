@@ -30,12 +30,14 @@
 #define FALSE 0
 #define TRUE 1
 #define SBDOUTPUTMAX 1960
-#define SLICE_LEN 30
+#define SLICE_LEN 100
 #define SBDWTMIN 1
 #define NO_MT_MSG 0
 #define HAS_MT_MSG 1
 #define GET_MT_MSG_ERROR 2
 #define RETRY_INTERVAL 3
+
+const char *key = "bupt632";
 
 struct iridium9602
 {
@@ -51,18 +53,19 @@ struct sbdix_return
     int MOSTATUS;
     int MOMSN;
     int MTSTATUS;
-    int MTMSN;
+    int MTMSN;     
     int MTLENGTH;
     int MTQUEUED;
 } my_sbdi;
 
 typedef struct
 {
+    char *magic_code;
     int sn;
-    long ip;
+    unsigned long ip;
     int port;
     int index;
-    int count;
+    int has_more;
     char msg[];
 } slice;
 
@@ -614,7 +617,9 @@ printf("read from file\n");
         printf("ip = %lu , port = %d msg_len = %d, msg = %s\n", *ip_addr, *port, msg_len, msg_recv);
 #endif 
         fclose(fp);
+#ifdef DEBUG
         unlink(filename);
+#endif
 
     } else {
 
@@ -653,21 +658,25 @@ void send_after_split(int fd, unsigned long ip_addr, int port, const char *msg_r
 #endif 
 
     for (index = 0; index < count; index++) {
-
+        
+        strncpy(m_slice->magic_code, key, strlen(key));
         m_slice->sn = SEQUENTIAL_NUM;
         m_slice->ip = ip_addr;
         m_slice->port = port;
         m_slice->index = index;
-        m_slice->count = count;
 
+        if (index != count-1)
+            m_slice->has_more = 1;
+        else
+            m_slice->has_more = 0;
         memcpy(m_slice->msg, msg_recv + index*PAYLOAD_LEN, PAYLOAD_LEN);
         printf("index = %d,PAYLOAD_LEN = %d, index*PAYLOAD_LEN = %d\n", 
                 index, PAYLOAD_LEN, index*PAYLOAD_LEN);
         memcpy(temp_msg, msg_recv + index*PAYLOAD_LEN, PAYLOAD_LEN);
 
 #ifdef DEBUG
-        printf("sn = %d ip = %lu, port = %d, msg slice %d, count = %d, msg = %s\n", 
-                m_slice->sn, m_slice->ip, m_slice->port, m_slice->index,  m_slice->count, temp_msg);
+        printf("sn = %d ip = %lu, port = %d, msg slice %d, has_more = %d, msg = %s\n", 
+                m_slice->sn, m_slice->ip, m_slice->port, m_slice->index,  m_slice->has_more, temp_msg);
 #endif 
 
         send_to_iridium(fd, (char*)m_slice, SLICE_LEN);
