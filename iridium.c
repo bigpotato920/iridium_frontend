@@ -60,7 +60,7 @@ struct sbdix_return
 
 typedef struct
 {
-    char *magic_code;
+    char magic_code[8];
     int sn;
     unsigned long ip;
     int port;
@@ -659,7 +659,7 @@ void send_after_split(int fd, unsigned long ip_addr, int port, const char *msg_r
 
     for (index = 0; index < count; index++) {
         
-        strncpy(m_slice->magic_code, key, strlen(key));
+        strcpy(m_slice->magic_code, key);
         m_slice->sn = SEQUENTIAL_NUM;
         m_slice->ip = ip_addr;
         m_slice->port = port;
